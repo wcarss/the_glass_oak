@@ -1,0 +1,33 @@
+Copyright of This Work
+
+With exceptions to follow, this software is available under The MIT License[0], locally available with attribution information in the file ./LICENSE (path is relative to this file).
+
+
+
+Exceptions and Other Licenses:
+
+The spirit of this work and much of its content are taken from tomassedovic's[1] Rust roguelike tutorial[2], itself a port of the older Python roguelike tutorial[3], used as provided without any visible license.
+
+The Square font by Wouter Van Oortmerssen[4] is licensed under the Creative Commons Attribution 3.0 Unported (CC BY 3.0) license[5]. The image "square10x10.png" is a derived work from Wouter's TTF font source[6] transformed into a png using ttf2png[7], with the second and third rows of text in the font copied from "arial10x10.png" by tomassedovic[1] under the Do What The F*ck You Want To public license (WTFPL) [8,9].
+
+The project also makes use of libtcod[10] in binary form under its bespoke license[11, 12] of SDL in binary form[13] under the zlib license[14], and of the tcod-rs rust bindings for libtcod, by Tomas Sedovic[1] also used under the WTFPL[8,9].
+
+
+
+References:
+
+0 - https://opensource.org/licenses/MIT
+1 - https://github.com/tomassedovic/, tomas@sedovic.cz
+2 - https://tomassedovic.github.io/roguelike-tutorial/
+3 - http://www.roguebasin.com/index.php?title=Complete_Roguelike_Tutorial,_using_python%2Blibtcod
+4 - owner of strlen.com, also aardappelatgmaildotcom
+5 - https://creativecommons.org/licenses/by/3.0/deed.en_US
+6 - http://strlen.com/square/
+7 - http://www.tdb.fi/ttf2png.shtml (not being distributed, so licensing of this code isn't relevant -- just context on source of image)
+8 - https://tldrlegal.com/license/do-wtf-you-want-to-public-license-v2-(wtfpl-2.0)
+9 - https://github.com/tomassedovic/tcod-rs/commit/156f53f0639b597824b3d40d801759dc52cbb7f7
+10 - https://github.com/libtcod/libtcod/
+11 - https://github.com/libtcod/libtcod/blob/4fcdbea4f16ed06540798c18d179ad3b8a4c465d/LIBTCOD-LICENSE.txt
+12 - local copy as license directs in ./LIBTCOD-LICENSE.txt relative to this license file.
+13 - https://www.libsdl.org/
+14 - https://www.libsdl.org/license.php
