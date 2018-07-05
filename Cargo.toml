@@ -5,3 +5,4 @@ authors = ["Wyatt Carss <wyatt@wcarss.ca>"]
 
 [dependencies]
 tcod = "0.12"
+rand = "0.3.9"
