@@ -24,6 +24,7 @@ const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 12;
 const MAX_ROOM_MONSTERS: i32 = 3;
+const PLAYER: usize = 0;
 
 type Map = Vec<Vec<Tile>>;
 
@@ -190,7 +191,7 @@ fn place_objects(room: Rect, objects: &mut Vec<Object>) {
 
 fn render_all(root: &mut Root, con: &mut Offscreen, objects: &Vec<Object>, map: &mut Map, fov_map: &mut FovMap, fov_recompute: bool) {
   if fov_recompute {
-    let player = &objects[0];
+    let player = &objects[PLAYER];
     fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
 
     for y in 0 .. MAP_HEIGHT {
@@ -268,8 +269,8 @@ fn main() {
   let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', colors::YELLOW);
   let mut objects = vec![player, npc];
   let (mut map, (player_x, player_y)) = make_map(&mut objects);
-  objects[0].x = player_x;
-  objects[0].y = player_y;
+  objects[PLAYER].x = player_x;
+  objects[PLAYER].y = player_y;
 
   let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
   for y in 0..MAP_HEIGHT {
@@ -284,7 +285,7 @@ fn main() {
   }
 
   while !root.window_closed() {
-    let fov_recompute = previous_player_position != (objects[0].x, objects[1].y);
+    let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
     render_all(&mut root, &mut con, &objects, &mut map, &mut fov_map, fov_recompute);
     root.flush();
 
@@ -292,7 +293,7 @@ fn main() {
       object.clear(&mut con);
     }
 
-    let player = &mut objects[0];
+    let player = &mut objects[PLAYER];
     previous_player_position = (player.x, player.y);
     let exit = handle_keys(&mut root, player, &map);
     if exit {
