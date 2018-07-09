@@ -23,10 +23,11 @@ const MAX_ROOMS: i32 = 30;
 const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 12;
+const MAX_ROOM_MONSTERS: i32 = 3;
 
 type Map = Vec<Vec<Tile>>;
 
-fn make_map() -> (Map, (i32, i32)) {
+fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
   // fills map with unblocked tiles... odd macro syntax!
   let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
   let mut rooms = vec![];
@@ -44,6 +45,7 @@ fn make_map() -> (Map, (i32, i32)) {
 
     if !failed {
       create_room(new_room, &mut map);
+      place_objects(new_room, objects);
 
       let (new_x, new_y) = new_room.center();
 
@@ -168,7 +170,25 @@ impl Object {
 }
 
 
-fn render_all(root: &mut Root, con: &mut Offscreen, objects: &[Object], map: &mut Map, fov_map: &mut FovMap, fov_recompute: bool) {
+fn place_objects(room: Rect, objects: &mut Vec<Object>) {
+  let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
+
+  for _ in 0..num_monsters {
+    let x = rand::thread_rng().gen_range(room.x1+1, room.x2);
+    let y = rand::thread_rng().gen_range(room.y1+1, room.y2);
+
+    let mut monster = if rand::random::<f32>() < 0.8 {
+      Object::new(x, y, 'o', colors::DESATURATED_GREEN)
+    } else {
+      Object::new(x, y, 'o', colors::DARKER_GREEN)
+    };
+
+    objects.push(monster);
+  }
+}
+
+
+fn render_all(root: &mut Root, con: &mut Offscreen, objects: &Vec<Object>, map: &mut Map, fov_map: &mut FovMap, fov_recompute: bool) {
   if fov_recompute {
     let player = &objects[0];
     fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
@@ -244,10 +264,12 @@ fn main() {
   tcod::system::set_fps(LIMIT_FPS);
 
   let mut previous_player_position = (-1, -1);
-  let (mut map, (player_x, player_y)) = make_map();
-  let player = Object::new(player_x, player_y, '@', colors::WHITE);
+  let player = Object::new(0, 0, '@', colors::WHITE);
   let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', colors::YELLOW);
-  let mut objects = [player, npc];
+  let mut objects = vec![player, npc];
+  let (mut map, (player_x, player_y)) = make_map(&mut objects);
+  objects[0].x = player_x;
+  objects[0].y = player_y;
 
   let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
   for y in 0..MAP_HEIGHT {
