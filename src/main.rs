@@ -141,22 +141,19 @@ struct Object {
   y: i32,
   char: char,
   color: Color,
+  blocks: bool,
+  alive: bool,
 }
 
 impl Object {
-  pub fn new (x: i32, y: i32, char: char, color: Color) -> Self {
+  pub fn new (x: i32, y: i32, char: char, color: Color, blocks: bool) -> Self {
     Object {
       x: x,
       y: y,
       char: char,
       color: color,
-    }
-  }
-
-  pub fn move_by (&mut self, dx: i32, dy: i32, map: &Map) {
-    if !map[(self.x + dx) as usize][(self.y + dy) as usize].blocked {
-      self.x += dx;
-      self.y += dy;
+      blocks: blocks,
+      alive: false,
     }
   }
 
@@ -168,8 +165,23 @@ impl Object {
   pub fn clear (&self, con: &mut Console) {
     con.put_char(self.x, self.y, ' ', BackgroundFlag::None);
   }
+
+  pub fn pos(&self) -> (i32, i32) {
+    (self.x, self.y)
+  }
+
+  pub fn set_pos(&mut self, x: i32, y: i32) {
+    self.x = x;
+    self.y = y;
+  }
 }
 
+fn move_by (id: usize, dx: i32, dy: i32, map: &Map, objects: &mut Vec<Object>) {
+  let (x, y) = objects[id].pos();
+  if !is_blocked(x + dx, y + dy, map, objects) {
+    objects[id].set_pos(x + dx, y + dy);
+  }
+}
 
 fn place_objects(room: Rect, objects: &mut Vec<Object>) {
   let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
@@ -179,13 +191,24 @@ fn place_objects(room: Rect, objects: &mut Vec<Object>) {
     let y = rand::thread_rng().gen_range(room.y1+1, room.y2);
 
     let mut monster = if rand::random::<f32>() < 0.8 {
-      Object::new(x, y, 'o', colors::DESATURATED_GREEN)
+      Object::new(x, y, 'o', colors::DESATURATED_GREEN, true)
     } else {
-      Object::new(x, y, 'o', colors::DARKER_GREEN)
+      Object::new(x, y, 'o', colors::DARKER_GREEN, true)
     };
 
     objects.push(monster);
   }
+}
+
+
+fn is_blocked(x: i32, y: i32, map: &Map, objects: &Vec<Object>) -> bool {
+  if map[x as usize][y as usize].blocked {
+    return true;
+  }
+
+  objects.iter().any(|object| {
+    object.blocks && object.pos() == (x, y)
+  })
 }
 
 
@@ -227,17 +250,17 @@ fn render_all(root: &mut Root, con: &mut Offscreen, objects: &Vec<Object>, map: 
 }
 
 
-fn handle_keys(root: &mut Root, player: &mut Object, map: &Map) -> bool {
+fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> bool {
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
   let key = root.wait_for_keypress(true);
 
   match key {
-    Key { code: Up, .. } => player.move_by(0, -1, map),
-    Key { code: Down, .. } => player.move_by(0, 1, map),
-    Key { code: Left, .. } => player.move_by(-1, 0, map),
-    Key { code: Right, .. } => player.move_by(1, 0, map),
+    Key { code: Up, .. } => move_by(PLAYER, 0, -1, map, objects),
+    Key { code: Down, .. } => move_by(PLAYER, 0, 1, map, objects),
+    Key { code: Left, .. } => move_by(PLAYER, -1, 0, map, objects),
+    Key { code: Right, .. } => move_by(PLAYER, 1, 0, map, objects),
 
     Key { code: Enter, alt: true, .. } => {
       let fullscreen = root.is_fullscreen();
@@ -265,12 +288,11 @@ fn main() {
   tcod::system::set_fps(LIMIT_FPS);
 
   let mut previous_player_position = (-1, -1);
-  let player = Object::new(0, 0, '@', colors::WHITE);
-  let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', colors::YELLOW);
+  let player = Object::new(0, 0, '%', colors::WHITE, true);
+  let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', colors::YELLOW, true);
   let mut objects = vec![player, npc];
   let (mut map, (player_x, player_y)) = make_map(&mut objects);
-  objects[PLAYER].x = player_x;
-  objects[PLAYER].y = player_y;
+  objects[PLAYER].set_pos(player_x, player_y);
 
   let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
   for y in 0..MAP_HEIGHT {
@@ -293,9 +315,8 @@ fn main() {
       object.clear(&mut con);
     }
 
-    let player = &mut objects[PLAYER];
-    previous_player_position = (player.x, player.y);
-    let exit = handle_keys(&mut root, player, &map);
+    previous_player_position = (objects[PLAYER].x, objects[PLAYER].y);
+    let exit = handle_keys(&mut root, &mut objects, &map);
     if exit {
       break
     }
