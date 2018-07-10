@@ -170,18 +170,18 @@ impl Object {
     (self.x, self.y)
   }
 
+  pub fn move_by (&mut self, dx: i32, dy: i32) {
+    let (x, y) = self.pos();
+    self.set_pos(x + dx, y + dy);
+  }
+
   pub fn set_pos(&mut self, x: i32, y: i32) {
     self.x = x;
     self.y = y;
   }
 }
 
-fn move_by (id: usize, dx: i32, dy: i32, map: &Map, objects: &mut Vec<Object>) {
-  let (x, y) = objects[id].pos();
-  if !is_blocked(x + dx, y + dy, map, objects) {
-    objects[id].set_pos(x + dx, y + dy);
-  }
-}
+
 
 fn place_objects(room: Rect, objects: &mut Vec<Object>) {
   let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
@@ -249,27 +249,40 @@ fn render_all(root: &mut Root, con: &mut Offscreen, objects: &Vec<Object>, map: 
   blit(con, (0, 0), (MAP_WIDTH, MAP_HEIGHT), root, (0, 0), 1.0, 1.0);
 }
 
+fn move_check ((pos_x, pos_y): (i32, i32), (move_x, move_y): (i32, i32), map: &Map, objects: &Vec<Object>) -> (i32, i32) {
+  if !is_blocked(pos_x+move_x, pos_y+move_y, map, objects) {
+    (move_x, move_y)
+  } else {
+    (0, 0)
+  }
+}
 
 fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> bool {
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
   let key = root.wait_for_keypress(true);
+  let pos = objects[PLAYER].pos();
+  let (dx, dy) = match key {
+    Key { code: Up, .. } => move_check(pos, (0, -1), map, objects),
+    Key { code: Down, .. } => move_check(pos, (0, 1), map, objects),
+    Key { code: Left, .. } => move_check(pos, (-1, 0), map, objects),
+    Key { code: Right, .. } => move_check(pos, (1, 0), map, objects),
+    _ => (0, 0),
+  };
+
+  if dx != 0 || dy != 0 {
+    objects[PLAYER].move_by(dx, dy);
+  }
 
   match key {
-    Key { code: Up, .. } => move_by(PLAYER, 0, -1, map, objects),
-    Key { code: Down, .. } => move_by(PLAYER, 0, 1, map, objects),
-    Key { code: Left, .. } => move_by(PLAYER, -1, 0, map, objects),
-    Key { code: Right, .. } => move_by(PLAYER, 1, 0, map, objects),
-
     Key { code: Enter, alt: true, .. } => {
       let fullscreen = root.is_fullscreen();
       root.set_fullscreen(!fullscreen);
     },
     Key { code: Escape, .. } => return true,
-
     _ => {},
-  }
+  };
 
   false
 }
