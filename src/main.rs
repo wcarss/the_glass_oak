@@ -27,6 +27,17 @@ const MAX_ROOM_MONSTERS: i32 = 3;
 const PLAYER: usize = 0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+struct Fighter {
+  max_hp: i32,
+  hp: i32,
+  defense: i32,
+  power: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Ai;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum PlayerAction {
   TookTurn,
   DidntTakeTurn,
@@ -151,6 +162,8 @@ struct Object {
   name: String,
   blocks: bool,
   alive: bool,
+  fighter: Option<Fighter>,
+  ai: Option<Ai>,
 }
 
 impl Object {
@@ -163,6 +176,8 @@ impl Object {
       name: name.into(),
       blocks: blocks,
       alive: false,
+      fighter: None,
+      ai: None,
     }
   }
 
@@ -182,6 +197,12 @@ impl Object {
   pub fn set_pos(&mut self, x: i32, y: i32) {
     self.x = x;
     self.y = y;
+  }
+
+  pub fn distance_to(&self, other: &Object) -> f32 {
+    let dx = other.x - self.x;
+    let dy = other.y - self.y;
+    ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
   }
 }
 
@@ -221,15 +242,62 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     if !is_blocked(x, y, map, objects) {
       let rand_control = rand::random::<f32>();
       let mut creature = if rand_control < 0.8 {
-        Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true)
+        let mut orc = Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true);
+        orc.fighter = Some( Fighter {
+          max_hp: 10,
+          hp: 10,
+          defense: 0,
+          power: 3,
+        });
+        orc.ai = Some(Ai);
+        orc
       } else if rand_control < 0.96 {
-        Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true)
+        let mut troll = Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true);
+        troll.fighter = Some( Fighter {
+          max_hp: 16,
+          hp: 16,
+          defense: 1,
+          power: 4,
+        });
+        troll.ai = Some(Ai);
+        troll
       } else {
-        Object::new(x, y, '&', &(String::from("npc-") + &(x+y).to_string()), colors::YELLOW, true)
+        let mut npc = Object::new(x, y, '&', &(String::from("npc-") + &(x+y).to_string()), colors::YELLOW, true);
+        npc.fighter = Some( Fighter {
+          max_hp: 10,
+          hp: 10,
+          defense: 0,
+          power: 3,
+        });
+        npc.ai = Some(Ai);
+        npc
       };
 
       creature.alive = true;
       objects.push(creature);
+    }
+  }
+}
+
+fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, objects: &mut Vec<Object>) {
+  let dx = target_x - objects[id].x;
+  let dy = target_y - objects[id].y;
+  let distance = ((dx.pow(2) + dy.pow(2)) as f32).sqrt();
+
+  let dx = (dx as f32 / distance).round() as i32;
+  let dy = (dy as f32 / distance).round() as i32;
+  move_by(id, dx, dy, map, objects);
+}
+
+fn ai_take_turn(monster_id: usize, map: &Map, objects: &mut Vec<Object>, fov_map: &FovMap) {
+  let (monster_x, monster_y) = objects[monster_id].pos();
+  if fov_map.is_in_fov(monster_x, monster_y) {
+    if objects[monster_id].distance_to(&objects[PLAYER]) >= 2.0 {
+      let (player_x, player_y) = objects[PLAYER].pos();
+      move_towards(monster_id, player_x, player_y, map, objects);
+    } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+      let monster = &objects[monster_id];
+      println!("The attack of {} bounces off your shiny metal armor!", monster.name);
     }
   }
 }
@@ -357,6 +425,12 @@ fn main() {
 
   objects[PLAYER].set_pos(player_x, player_y);
   objects[PLAYER].alive = true;
+  objects[PLAYER].fighter = Some( Fighter {
+    max_hp: 30,
+    hp: 30,
+    defense: 2,
+    power: 5
+  });
 
   while !root.window_closed() {
     let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
@@ -374,10 +448,9 @@ fn main() {
     }
 
     if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
-      for object in &objects {
-        if ((object as *const _) != (&objects[PLAYER] as *const _)) && 
-          fov_map.is_in_fov(object.x, object.y) {
-          println!("The {} growls!", object.name);
+      for id in 0..objects.len() {
+        if objects[id].ai.is_some() {
+          ai_take_turn(id, &map, &mut objects, &fov_map);
         }
       }
     }
