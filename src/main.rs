@@ -46,7 +46,7 @@ fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
 
     if !failed {
       create_room(new_room, &mut map);
-      place_objects(new_room, objects);
+      place_objects(new_room, &map, objects);
 
       let (new_x, new_y) = new_room.center();
 
@@ -141,17 +141,19 @@ struct Object {
   y: i32,
   char: char,
   color: Color,
+  name: String,
   blocks: bool,
   alive: bool,
 }
 
 impl Object {
-  pub fn new (x: i32, y: i32, char: char, color: Color, blocks: bool) -> Self {
+  pub fn new (x: i32, y: i32, char: char, name: &str, color: Color, blocks: bool) -> Self {
     Object {
       x: x,
       y: y,
       char: char,
       color: color,
+      name: name.into(),
       blocks: blocks,
       alive: false,
     }
@@ -183,20 +185,26 @@ impl Object {
 
 
 
-fn place_objects(room: Rect, objects: &mut Vec<Object>) {
-  let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
+fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
+  let num_creatures = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
 
-  for _ in 0..num_monsters {
+  for _ in 0..num_creatures {
     let x = rand::thread_rng().gen_range(room.x1+1, room.x2);
     let y = rand::thread_rng().gen_range(room.y1+1, room.y2);
 
-    let mut monster = if rand::random::<f32>() < 0.8 {
-      Object::new(x, y, 'o', colors::DESATURATED_GREEN, true)
-    } else {
-      Object::new(x, y, 'o', colors::DARKER_GREEN, true)
-    };
+    if !is_blocked(x, y, map, objects) {
+      let rand_control = rand::random::<f32>();
+      let mut creature = if rand_control < 0.8 {
+        Object::new(x, y, 'o', "orc", colors::DESATURATED_GREEN, true)
+      } else if rand_control < 0.96 {
+        Object::new(x, y, 'T', "troll", colors::DARKER_GREEN, true)
+      } else {
+        Object::new(x, y, '&', "npc", colors::YELLOW, true)
+      };
 
-    objects.push(monster);
+      creature.alive = true;
+      objects.push(creature);
+    }
   }
 }
 
@@ -301,12 +309,9 @@ fn main() {
   tcod::system::set_fps(LIMIT_FPS);
 
   let mut previous_player_position = (-1, -1);
-  let player = Object::new(0, 0, '%', colors::WHITE, true);
-  let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', colors::YELLOW, true);
-  let mut objects = vec![player, npc];
+  let player = Object::new(0, 0, '%', "player", colors::WHITE, true);
+  let mut objects = vec![player];
   let (mut map, (player_x, player_y)) = make_map(&mut objects);
-  objects[PLAYER].set_pos(player_x, player_y);
-
   let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
   for y in 0..MAP_HEIGHT {
     for x in 0..MAP_WIDTH {
@@ -318,6 +323,9 @@ fn main() {
       );
     }
   }
+
+  objects[PLAYER].set_pos(player_x, player_y);
+  objects[PLAYER].alive = true;
 
   while !root.window_closed() {
     let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
