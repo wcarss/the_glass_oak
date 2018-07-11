@@ -26,6 +26,13 @@ const TORCH_RADIUS: i32 = 12;
 const MAX_ROOM_MONSTERS: i32 = 3;
 const PLAYER: usize = 0;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlayerAction {
+  TookTurn,
+  DidntTakeTurn,
+  Exit,
+}
+
 type Map = Vec<Vec<Tile>>;
 
 fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
@@ -265,34 +272,38 @@ fn move_check ((pos_x, pos_y): (i32, i32), (move_x, move_y): (i32, i32), map: &M
   }
 }
 
-fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> bool {
+fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> PlayerAction {
+  use PlayerAction::*;
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
   let key = root.wait_for_keypress(true);
   let pos = objects[PLAYER].pos();
-  let (dx, dy) = match key {
-    Key { code: Up, .. } => move_check(pos, (0, -1), map, objects),
-    Key { code: Down, .. } => move_check(pos, (0, 1), map, objects),
-    Key { code: Left, .. } => move_check(pos, (-1, 0), map, objects),
-    Key { code: Right, .. } => move_check(pos, (1, 0), map, objects),
+  let player_alive = objects[PLAYER].alive;
+
+  let (dx, dy) = match (key, player_alive) {
+    (Key { code: Up, .. }, true) => move_check(pos, (0, -1), map, objects),
+    (Key { code: Down, .. }, true) => move_check(pos, (0, 1), map, objects),
+    (Key { code: Left, .. }, true) => move_check(pos, (-1, 0), map, objects),
+    (Key { code: Right, .. }, true) => move_check(pos, (1, 0), map, objects),
     _ => (0, 0),
   };
 
-  if dx != 0 || dy != 0 {
-    objects[PLAYER].move_by(dx, dy);
-  }
-
   match key {
+    Key { code: Escape, .. } => return Exit,
     Key { code: Enter, alt: true, .. } => {
       let fullscreen = root.is_fullscreen();
       root.set_fullscreen(!fullscreen);
     },
-    Key { code: Escape, .. } => return true,
-    _ => {},
+    _ => {}
   };
 
-  false
+  if dx != 0 || dy != 0 {
+    objects[PLAYER].move_by(dx, dy);
+    TookTurn
+  } else {
+    DidntTakeTurn
+  }
 }
 
 
@@ -337,8 +348,8 @@ fn main() {
     }
 
     previous_player_position = (objects[PLAYER].x, objects[PLAYER].y);
-    let exit = handle_keys(&mut root, &mut objects, &map);
-    if exit {
+    let player_action = handle_keys(&mut root, &mut objects, &map);
+    if player_action == PlayerAction::Exit {
       break
     }
   }
