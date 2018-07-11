@@ -190,6 +190,23 @@ impl Object {
   }
 }
 
+fn player_move_or_attack(dx: i32, dy: i32, objects: &mut Vec<Object>) {
+  let x = objects[PLAYER].x + dx;
+  let y = objects[PLAYER].y + dy;
+
+  let target_id = objects.iter().position(|object| {
+    object.pos() == (x, y)
+  });
+
+  match target_id {
+    Some(target_id) => {
+      println!("The {} laughs at your puny efforts to attack him!", objects[target_id].name);
+    },
+    None => {
+      objects[PLAYER].move_by(dx, dy);
+    }
+  }
+}
 
 
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
@@ -202,11 +219,11 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     if !is_blocked(x, y, map, objects) {
       let rand_control = rand::random::<f32>();
       let mut creature = if rand_control < 0.8 {
-        Object::new(x, y, 'o', "orc", colors::DESATURATED_GREEN, true)
+        Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true)
       } else if rand_control < 0.96 {
-        Object::new(x, y, 'T', "troll", colors::DARKER_GREEN, true)
+        Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true)
       } else {
-        Object::new(x, y, '&', "npc", colors::YELLOW, true)
+        Object::new(x, y, '&', &(String::from("npc-") + &(x+y).to_string()), colors::YELLOW, true)
       };
 
       creature.alive = true;
@@ -299,7 +316,8 @@ fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> PlayerA
   };
 
   if dx != 0 || dy != 0 {
-    objects[PLAYER].move_by(dx, dy);
+    player_move_or_attack(dx, dy, objects);
+    //objects[PLAYER].move_by(dx, dy);
     TookTurn
   } else {
     DidntTakeTurn
@@ -351,6 +369,15 @@ fn main() {
     let player_action = handle_keys(&mut root, &mut objects, &map);
     if player_action == PlayerAction::Exit {
       break
+    }
+
+    if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
+      for object in &objects {
+        if ((object as *const _) != (&objects[PLAYER] as *const _)) && 
+          fov_map.is_in_fov(object.x, object.y) {
+          println!("The {} growls!", object.name);
+        }
+      }
     }
   }
 }
