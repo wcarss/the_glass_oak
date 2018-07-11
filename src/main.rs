@@ -179,18 +179,20 @@ impl Object {
     (self.x, self.y)
   }
 
-  pub fn move_by (&mut self, dx: i32, dy: i32) {
-    let (x, y) = self.pos();
-    self.set_pos(x + dx, y + dy);
-  }
-
   pub fn set_pos(&mut self, x: i32, y: i32) {
     self.x = x;
     self.y = y;
   }
 }
 
-fn player_move_or_attack(dx: i32, dy: i32, objects: &mut Vec<Object>) {
+fn move_by (id: usize, dx: i32, dy: i32, map: &Map, objects: &mut Vec<Object>) {
+  let (x, y) = objects[id].pos();
+  if !is_blocked(x+dx, y+dy, map, objects) {
+    objects[id].set_pos(x + dx, y + dy);
+  }
+}
+
+fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut Vec<Object>) {
   let x = objects[PLAYER].x + dx;
   let y = objects[PLAYER].y + dy;
 
@@ -203,7 +205,7 @@ fn player_move_or_attack(dx: i32, dy: i32, objects: &mut Vec<Object>) {
       println!("The {} laughs at your puny efforts to attack him!", objects[target_id].name);
     },
     None => {
-      objects[PLAYER].move_by(dx, dy);
+      move_by(PLAYER, dx, dy, map, objects);
     }
   }
 }
@@ -295,32 +297,32 @@ fn handle_keys(root: &mut Root, objects: &mut Vec<Object>, map: &Map) -> PlayerA
   use tcod::input::KeyCode::*;
 
   let key = root.wait_for_keypress(true);
-  let pos = objects[PLAYER].pos();
   let player_alive = objects[PLAYER].alive;
 
-  let (dx, dy) = match (key, player_alive) {
-    (Key { code: Up, .. }, true) => move_check(pos, (0, -1), map, objects),
-    (Key { code: Down, .. }, true) => move_check(pos, (0, 1), map, objects),
-    (Key { code: Left, .. }, true) => move_check(pos, (-1, 0), map, objects),
-    (Key { code: Right, .. }, true) => move_check(pos, (1, 0), map, objects),
-    _ => (0, 0),
-  };
-
-  match key {
-    Key { code: Escape, .. } => return Exit,
-    Key { code: Enter, alt: true, .. } => {
+  match (key, player_alive) {
+    (Key { code: Up, .. }, true) => {
+      player_move_or_attack(0, -1, map, objects);
+      TookTurn
+    },
+    (Key { code: Down, .. }, true) => {
+      player_move_or_attack(0, 1, map, objects);
+      TookTurn
+    },
+    (Key { code: Left, .. }, true) => {
+      player_move_or_attack(-1, 0, map, objects);
+      TookTurn
+    },
+    (Key { code: Right, .. }, true) => {
+      player_move_or_attack(1, 0, map, objects);
+      TookTurn
+    },
+    (Key { code: Escape, .. }, _) => Exit,
+    (Key { code: Enter, alt: true, .. }, _) => {
       let fullscreen = root.is_fullscreen();
       root.set_fullscreen(!fullscreen);
+      DidntTakeTurn
     },
-    _ => {}
-  };
-
-  if dx != 0 || dy != 0 {
-    player_move_or_attack(dx, dy, objects);
-    //objects[PLAYER].move_by(dx, dy);
-    TookTurn
-  } else {
-    DidntTakeTurn
+    _ => DidntTakeTurn,
   }
 }
 
