@@ -37,6 +37,14 @@ const BAR_WIDTH: i32 = 20;
 const PANEL_HEIGHT: i32 = 7;
 const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
 
+struct Tcod {
+  root: Root,
+  con: Offscreen,
+  panel: Offscreen,
+  fov: FovMap,
+  mouse: Mouse,
+}
+
 enum UseResult {
   UsedUp,
   Cancelled,
@@ -613,8 +621,7 @@ fn render_all(root: &mut Root, con: &mut Offscreen, panel: &mut Offscreen, objec
   render_bar(panel, 1, 1, BAR_WIDTH, "HP", hp, max_hp, colors::LIGHT_RED, colors::DARKER_RED);
 
   panel.set_default_foreground(colors::LIGHT_GREY);
-  panel.print_ex(1, 0, BackgroundFlag::None, TextAlignment::Left, get_names_under_mouse(mouse,
-  &objects, fov_map));
+  panel.print_ex(1, 0, BackgroundFlag::None, TextAlignment::Left, get_names_under_mouse(mouse, &objects, fov_map));
 
   for &(ref msg, color) in messages.iter().rev() {
     let msg_height = panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
@@ -697,26 +704,27 @@ fn main() {
     .title("The Glass Oak")
     .init();
 
-  let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
-  let mut panel = Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT);
-
   tcod::system::set_fps(LIMIT_FPS);
+  let mut tcod = Tcod {
+    root: root,
+    con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
+    panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
+    fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
+    mouse: Default::default(),
+  };
 
   let mut messages = vec![];
-
   let mut previous_player_position = (-1, -1);
   let player = Object::new(0, 0, '%', "player", colors::WHITE, true);
   let mut objects = vec![player];
   let mut inventory = vec![];
 
   let (mut map, (player_x, player_y)) = make_map(&mut objects);
-  let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
-  let mut mouse = Default::default();
   let mut key = Default::default();
 
   for y in 0..MAP_HEIGHT {
     for x in 0..MAP_WIDTH {
-      fov_map.set(
+      tcod.fov.set(
         x,
         y,
         !map[x as usize][y as usize].block_sight,
@@ -738,24 +746,24 @@ fn main() {
   message(&mut messages, "Welcome stranger! Prepare to perish in the Tombs of The Glass Oak.",
   colors::RED);
 
-  while !root.window_closed() {
+  while !tcod.root.window_closed() {
     let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
 
     match input::check_for_event(input::MOUSE | input::KEY_PRESS) {
-      Some((_, Event::Mouse(m))) => mouse = m,
+      Some((_, Event::Mouse(m))) => tcod.mouse = m,
       Some((_, Event::Key(k))) => key = k,
       _ => key = Default::default(),
     }
 
-    render_all(&mut root, &mut con, &mut panel, &objects, &mut map, &messages, &mut fov_map, fov_recompute, mouse);
-    root.flush();
+    render_all(&mut tcod.root, &mut tcod.con, &mut tcod.panel, &objects, &mut map, &messages, &mut tcod.fov, fov_recompute, tcod.mouse);
+    tcod.root.flush();
 
     for object in &objects {
-      object.clear(&mut con);
+      object.clear(&mut tcod.con);
     }
 
     previous_player_position = (objects[PLAYER].x, objects[PLAYER].y);
-    let player_action = handle_keys(key, &mut root, &mut objects, &map, &mut messages, &mut inventory);
+    let player_action = handle_keys(key, &mut tcod.root, &mut objects, &map, &mut messages, &mut inventory);
     if player_action == PlayerAction::Exit {
       break
     }
@@ -763,7 +771,7 @@ fn main() {
     if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
       for id in 0..objects.len() {
         if objects[id].ai.is_some() {
-          ai_take_turn(id, &map, &mut objects, &fov_map, &mut messages);
+          ai_take_turn(id, &map, &mut objects, &tcod.fov, &mut messages);
         }
       }
     }
