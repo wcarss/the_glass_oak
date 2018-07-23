@@ -27,6 +27,7 @@ const TORCH_RADIUS: i32 = 12;
 const MAX_ROOM_MONSTERS: i32 = 3;
 const MAX_ROOM_ITEMS: i32 = 2;
 const PLAYER: usize = 0;
+const HEAL_AMOUNT: i32 = 4;
 const MSG_X: i32 = BAR_WIDTH + 2;
 const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
@@ -35,6 +36,24 @@ const INVENTORY_WIDTH: i32 = 50;
 const BAR_WIDTH: i32 = 20;
 const PANEL_HEIGHT: i32 = 7;
 const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
+
+enum UseResult {
+  UsedUp,
+  Cancelled,
+}
+
+fn cast_heal(_inventory_id: usize, objects: &mut Vec<Object>, messages: &mut Messages) -> UseResult {
+  if let Some(fighter) = objects[PLAYER].fighter {
+    if fighter.hp == fighter.max_hp {
+      message(messages, "You are already at full health.", colors::RED);
+      return UseResult::Cancelled;
+    }
+    message(messages, "Your wounds start to feel better!", colors::LIGHT_VIOLET);
+    objects[PLAYER].heal(HEAL_AMOUNT);
+    return UseResult::UsedUp;
+  }
+  UseResult::Cancelled
+}
 
 fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
   assert!(options.len() <= 26, "Cannot have a menu with more than 26 options.");
@@ -84,6 +103,26 @@ fn inventory_menu(inventory: &Vec<Object>, header: &str, root: &mut Root) -> Opt
     inventory_index
   } else {
     None
+  }
+}
+
+fn use_item(inventory_id: usize, inventory: &mut Vec<Object>, objects: &mut Vec<Object>, messages: &mut Messages) {
+  use Item::*;
+
+  if let Some(item) = inventory[inventory_id].item {
+    let on_use = match item {
+      Heal => cast_heal,
+    };
+    match on_use(inventory_id, objects, messages) {
+      UseResult::UsedUp => {
+        inventory.remove(inventory_id);
+      },
+      UseResult::Cancelled => {
+        message(messages, "Cancelled", colors::WHITE);
+      }
+    }
+  } else {
+    message(messages, format!("The {} cannot be used.", inventory[inventory_id].name), colors::WHITE);
   }
 }
 
@@ -350,6 +389,15 @@ impl Object {
       if fighter.hp <= 0 {
         self.alive = false;
         fighter.on_death.callback(self, messages);
+      }
+    }
+  }
+
+  pub fn heal(&mut self, amount: i32) {
+    if let Some(ref mut fighter) = self.fighter {
+      fighter.hp += amount;
+      if fighter.hp > fighter.max_hp {
+        fighter.hp = fighter.max_hp;
       }
     }
   }
@@ -623,8 +671,12 @@ fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, 
       DidntTakeTurn
     },
     (Key { printable: 'i', .. }, true) => {
-      inventory_menu(inventory, "Press the key next to an item to use it, or any other to cancel.\n", root);
-      TookTurn
+      let inventory_index = inventory_menu(inventory, "Press the key next to an item to use it, or any other to cancel.\n", root);
+
+      if let Some(inventory_index) = inventory_index {
+        use_item(inventory_index, inventory, objects, messages);
+      }
+      DidntTakeTurn
     },
     (Key { code: Escape, .. }, _) => Exit,
     (Key { code: Enter, alt: true, .. }, _) => {
