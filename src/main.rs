@@ -25,6 +25,7 @@ const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 12;
 const MAX_ROOM_MONSTERS: i32 = 3;
+const MAX_ROOM_ITEMS: i32 = 2;
 const PLAYER: usize = 0;
 const MSG_X: i32 = BAR_WIDTH + 2;
 const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
@@ -33,6 +34,22 @@ const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 const BAR_WIDTH: i32 = 20;
 const PANEL_HEIGHT: i32 = 7;
 const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Item {
+  Heal,
+}
+
+fn pick_item_up(object_id: usize, objects: &mut Vec<Object>, inventory: &mut Vec<Object>, messages: &mut Messages) {
+  if inventory.len() >= 26 {
+    message(messages, format!("Your inventory is full. Cannot pick up {}.",
+    objects[object_id].name), colors::RED);
+  } else {
+    let item = objects.swap_remove(object_id);
+    message(messages, format!("You picked up a {}!", item.name), colors::GREEN);
+    inventory.push(item);
+  }
+}
 
 fn get_names_under_mouse(mouse: Mouse, objects: &Vec<Object>, fov_map: &FovMap) -> String {
   let (x, y) = (mouse.cx as i32, mouse.cy as i32);
@@ -228,6 +245,7 @@ struct Object {
   alive: bool,
   fighter: Option<Fighter>,
   ai: Option<Ai>,
+  item: Option<Item>,
 }
 
 impl Object {
@@ -242,6 +260,7 @@ impl Object {
       alive: false,
       fighter: None,
       ai: None,
+      item: None,
     }
   }
 
@@ -381,6 +400,19 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
       objects.push(creature);
     }
   }
+
+  let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+
+  for _ in 0..num_items {
+    let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+    let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+    if !is_blocked(x, y, map, objects) {
+      let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
+      object.item = Some(Item::Heal);
+      objects.push(object);
+    }
+  }
 }
 
 fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, objects: &mut Vec<Object>) {
@@ -505,7 +537,7 @@ fn move_check ((pos_x, pos_y): (i32, i32), (move_x, move_y): (i32, i32), map: &M
   }
 }
 
-fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, messages: &mut Messages) -> PlayerAction {
+fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, messages: &mut Messages, inventory: &mut Vec<Object>) -> PlayerAction {
   use PlayerAction::*;
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
@@ -528,6 +560,15 @@ fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, 
     (Key { code: Right, .. }, true) => {
       player_move_or_attack(1, 0, map, objects, messages);
       TookTurn
+    },
+    (Key { printable: 'g', .. }, true) => {
+      let item_id = objects.iter().position(|object| {
+        object.pos() == objects[PLAYER].pos() && object.item.is_some()
+      });
+      if let Some(item_id) = item_id {
+        pick_item_up(item_id, objects, inventory, messages);
+      }
+      DidntTakeTurn
     },
     (Key { code: Escape, .. }, _) => Exit,
     (Key { code: Enter, alt: true, .. }, _) => {
@@ -558,6 +599,8 @@ fn main() {
   let mut previous_player_position = (-1, -1);
   let player = Object::new(0, 0, '%', "player", colors::WHITE, true);
   let mut objects = vec![player];
+  let mut inventory = vec![];
+
   let (mut map, (player_x, player_y)) = make_map(&mut objects);
   let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
   let mut mouse = Default::default();
@@ -604,7 +647,7 @@ fn main() {
     }
 
     previous_player_position = (objects[PLAYER].x, objects[PLAYER].y);
-    let player_action = handle_keys(key, &mut root, &mut objects, &map, &mut messages);
+    let player_action = handle_keys(key, &mut root, &mut objects, &map, &mut messages, &mut inventory);
     if player_action == PlayerAction::Exit {
       break
     }
