@@ -25,10 +25,23 @@ const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 12;
 const MAX_ROOM_MONSTERS: i32 = 3;
 const PLAYER: usize = 0;
+const MSG_X: i32 = BAR_WIDTH + 2;
+const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
+const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
 const BAR_WIDTH: i32 = 20;
 const PANEL_HEIGHT: i32 = 7;
 const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
+
+type Messages = Vec<(String, Color)>;
+
+fn message<T: Into<String>>(messages: &mut Messages, message: T, color: Color) {
+  if messages.len() == MSG_HEIGHT {
+    messages.remove(0);
+  }
+
+  messages.push((message.into(), color));
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Fighter {
@@ -407,7 +420,9 @@ fn render_bar(panel: &mut Offscreen, x: i32, y: i32, total_width: i32, name: &st
 }
 
 
-fn render_all(root: &mut Root, con: &mut Offscreen, panel: &mut Offscreen, objects: &Vec<Object>, map: &mut Map, fov_map: &mut FovMap, fov_recompute: bool) {
+fn render_all(root: &mut Root, con: &mut Offscreen, panel: &mut Offscreen, objects: &Vec<Object>, map: &mut Map, messages: &Messages, fov_map: &mut FovMap, fov_recompute: bool) {
+  let mut y = MSG_HEIGHT as i32;
+
   if fov_recompute {
     let player = &objects[PLAYER];
     fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
@@ -450,6 +465,16 @@ fn render_all(root: &mut Root, con: &mut Offscreen, panel: &mut Offscreen, objec
   let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
 
   render_bar(panel, 1, 1, BAR_WIDTH, "HP", hp, max_hp, colors::LIGHT_RED, colors::DARKER_RED);
+
+  for &(ref msg, color) in messages.iter().rev() {
+    let msg_height = panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+    y -= msg_height;
+    if y < 0 {
+      break;
+    }
+    panel.set_default_foreground(color);
+    panel.print_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+  }
 
   blit(panel, (0, 0), (SCREEN_WIDTH, PANEL_HEIGHT), root, (0, PANEL_Y), 1.0, 1.0);
 }
@@ -511,6 +536,8 @@ fn main() {
 
   tcod::system::set_fps(LIMIT_FPS);
 
+  let mut messages = vec![];
+
   let mut previous_player_position = (-1, -1);
   let player = Object::new(0, 0, '%', "player", colors::WHITE, true);
   let mut objects = vec![player];
@@ -537,9 +564,13 @@ fn main() {
     on_death: DeathCallback::Player,
   });
 
+  message(&mut messages, "Welcome stranger! Prepare to perish in the Tombs of The Glass Oak.",
+  colors::RED);
+
   while !root.window_closed() {
     let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
-    render_all(&mut root, &mut con, &mut panel, &objects, &mut map, &mut fov_map, fov_recompute);
+
+    render_all(&mut root, &mut con, &mut panel, &objects, &mut map, &messages, &mut fov_map, fov_recompute);
     root.flush();
 
     for object in &objects {
