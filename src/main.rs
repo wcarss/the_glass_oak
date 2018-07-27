@@ -57,6 +57,21 @@ enum UseResult {
 }
 
 
+fn target_monster(tcod: &mut Tcod, objects: &Vec<Object>, map: &mut Map, messages: &Messages, max_range: Option<f32>) -> Option<usize> {
+  loop {
+    match target_tile(tcod, objects, map, messages, max_range) {
+      Some((x, y)) => {
+        for (id, obj) in objects.iter().enumerate() {
+          if obj.pos() == (x, y) && obj.fighter.is_some() && id != PLAYER {
+            return Some(id)
+          }
+        }
+      },
+      None => return None,
+    }
+  }
+}
+
 fn target_tile(tcod: &mut Tcod, objects: &Vec<Object>, map: &mut Map, messages: &Messages, max_range: Option<f32>) -> Option<(i32, i32)> {
   use tcod::input::KeyCode::Escape;
 
@@ -135,7 +150,8 @@ fn cast_lightning(_inventory_id: usize, objects: &mut Vec<Object>, messages: &mu
 
 
 fn cast_confuse(_inventory_id: usize, objects: &mut Vec<Object>, messages: &mut Messages, map: &mut Map, tcod: &mut Tcod) -> UseResult {
-  let monster_id = closest_monster(CONFUSE_RANGE, objects, tcod);
+  message(messages, "Left-click an enemy to confuse it, right-click to cancel.", colors::LIGHT_CYAN);
+  let monster_id = target_monster(tcod, objects, map, messages, Some(CONFUSE_RANGE as f32));
   if let Some(monster_id) = monster_id {
     let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);
     objects[monster_id].ai = Some(Ai::Confused {
