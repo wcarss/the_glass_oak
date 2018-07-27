@@ -262,6 +262,15 @@ enum Item {
   Fireball,
 }
 
+
+fn drop_item(inventory_id: usize, inventory: &mut Vec<Object>, objects: &mut Vec<Object>, messages: &mut Messages) {
+  let mut item = inventory.remove(inventory_id);
+  item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
+  message(messages, format!("You dropped a {}.", item.name), colors::YELLOW);
+  objects.push(item);
+}
+
+
 fn pick_item_up(object_id: usize, objects: &mut Vec<Object>, inventory: &mut Vec<Object>, messages: &mut Messages) {
   if inventory.len() >= 26 {
     message(messages, format!("Your inventory is full. Cannot pick up {}.",
@@ -272,6 +281,7 @@ fn pick_item_up(object_id: usize, objects: &mut Vec<Object>, inventory: &mut Vec
     inventory.push(item);
   }
 }
+
 
 fn get_names_under_mouse(mouse: Mouse, objects: &Vec<Object>, fov_map: &FovMap) -> String {
   let (x, y) = (mouse.cx as i32, mouse.cy as i32);
@@ -848,6 +858,13 @@ fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, map: &mut M
       });
       if let Some(item_id) = item_id {
         pick_item_up(item_id, objects, inventory, messages);
+      }
+      DidntTakeTurn
+    },
+    (Key { printable: 'd', .. }, true) => {
+      let inventory_index = inventory_menu(inventory, "Press the key next to an item  to drop it, or any other to cancel.\n", &mut tcod.root);
+      if let Some(inventory_index) = inventory_index {
+        drop_item(inventory_index, inventory, objects, messages);
       }
       DidntTakeTurn
     },
