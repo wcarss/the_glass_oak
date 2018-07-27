@@ -50,7 +50,7 @@ enum UseResult {
   Cancelled,
 }
 
-fn cast_heal(_inventory_id: usize, objects: &mut Vec<Object>, messages: &mut Messages) -> UseResult {
+fn cast_heal(tcod: &mut Tcod, _inventory_id: usize, objects: &mut Vec<Object>, messages: &mut Messages) -> UseResult {
   if let Some(fighter) = objects[PLAYER].fighter {
     if fighter.hp == fighter.max_hp {
       message(messages, "You are already at full health.", colors::RED);
@@ -114,14 +114,14 @@ fn inventory_menu(inventory: &Vec<Object>, header: &str, root: &mut Root) -> Opt
   }
 }
 
-fn use_item(inventory_id: usize, inventory: &mut Vec<Object>, objects: &mut Vec<Object>, messages: &mut Messages) {
+fn use_item(tcod: &mut Tcod, inventory_id: usize, inventory: &mut Vec<Object>, objects: &mut Vec<Object>, messages: &mut Messages) {
   use Item::*;
 
   if let Some(item) = inventory[inventory_id].item {
     let on_use = match item {
       Heal => cast_heal,
     };
-    match on_use(inventory_id, objects, messages) {
+    match on_use(tcod, inventory_id, objects, messages) {
       UseResult::UsedUp => {
         inventory.remove(inventory_id);
       },
@@ -574,7 +574,12 @@ fn render_bar(panel: &mut Offscreen, x: i32, y: i32, total_width: i32, name: &st
 }
 
 
-fn render_all(root: &mut Root, con: &mut Offscreen, panel: &mut Offscreen, objects: &Vec<Object>, map: &mut Map, messages: &Messages, fov_map: &mut FovMap, fov_recompute: bool, mouse: Mouse) {
+fn render_all(tcod: &mut Tcod, objects: &Vec<Object>, map: &mut Map, messages: &Messages, fov_recompute: bool) {
+  let root = &mut tcod.root;
+  let con = &mut tcod.con;
+  let panel = &mut tcod.panel;
+  let fov_map = &mut tcod.fov;
+  let mouse = tcod.mouse;
   let mut y = MSG_HEIGHT as i32;
 
   if fov_recompute {
@@ -644,7 +649,7 @@ fn move_check ((pos_x, pos_y): (i32, i32), (move_x, move_y): (i32, i32), map: &M
   }
 }
 
-fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, messages: &mut Messages, inventory: &mut Vec<Object>) -> PlayerAction {
+fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, map: &Map, messages: &mut Messages, inventory: &mut Vec<Object>) -> PlayerAction {
   use PlayerAction::*;
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
@@ -678,17 +683,17 @@ fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, 
       DidntTakeTurn
     },
     (Key { printable: 'i', .. }, true) => {
-      let inventory_index = inventory_menu(inventory, "Press the key next to an item to use it, or any other to cancel.\n", root);
+      let inventory_index = inventory_menu(inventory, "Press the key next to an item to use it, or any other to cancel.\n", &mut tcod.root);
 
       if let Some(inventory_index) = inventory_index {
-        use_item(inventory_index, inventory, objects, messages);
+        use_item(tcod, inventory_index, inventory, objects, messages);
       }
       DidntTakeTurn
     },
     (Key { code: Escape, .. }, _) => Exit,
     (Key { code: Enter, alt: true, .. }, _) => {
-      let fullscreen = root.is_fullscreen();
-      root.set_fullscreen(!fullscreen);
+      let fullscreen = tcod.root.is_fullscreen();
+      tcod.root.set_fullscreen(!fullscreen);
       DidntTakeTurn
     },
     _ => DidntTakeTurn,
@@ -697,7 +702,7 @@ fn handle_keys(key: Key, root: &mut Root, objects: &mut Vec<Object>, map: &Map, 
 
 
 fn main() {
-  let mut root = Root::initializer()
+  let root = Root::initializer()
     .font("square10x10.png", FontLayout::Tcod)
     .font_type(FontType::Greyscale)
     .size(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -755,7 +760,7 @@ fn main() {
       _ => key = Default::default(),
     }
 
-    render_all(&mut tcod.root, &mut tcod.con, &mut tcod.panel, &objects, &mut map, &messages, &mut tcod.fov, fov_recompute, tcod.mouse);
+    render_all(&mut tcod, &objects, &mut map, &messages, fov_recompute);
     tcod.root.flush();
 
     for object in &objects {
@@ -763,7 +768,7 @@ fn main() {
     }
 
     previous_player_position = (objects[PLAYER].x, objects[PLAYER].y);
-    let player_action = handle_keys(key, &mut tcod.root, &mut objects, &map, &mut messages, &mut inventory);
+    let player_action = handle_keys(key, &mut tcod, &mut objects, &map, &mut messages, &mut inventory);
     if player_action == PlayerAction::Exit {
       break
     }
