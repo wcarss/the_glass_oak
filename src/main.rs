@@ -1,5 +1,8 @@
 extern crate tcod;
 extern crate rand;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+extern crate serde_json;
 
 use tcod::console::*;
 use tcod::colors;
@@ -8,6 +11,9 @@ use tcod::map::{Map as FovMap, FovAlgorithm};
 use tcod::input::{self, Event, Mouse, Key};
 use rand::Rng;
 use std::cmp;
+use std::io::{Read, Write};
+use std::fs::File;
+use std::error::Error;
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
@@ -53,6 +59,7 @@ impl MessageLog for Vec<(String, Color)> {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 struct Game {
   map: Map,
   log: Messages,
@@ -274,7 +281,7 @@ fn use_item(tcod: &mut Tcod, inventory_id: usize, objects: &mut Vec<Object>, gam
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum Item {
   Heal,
   Lightning,
@@ -317,7 +324,7 @@ fn get_names_under_mouse(mouse: Mouse, objects: &Vec<Object>, fov_map: &FovMap) 
 
 type Messages = Vec<(String, Color)>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 struct Fighter {
   max_hp: i32,
   hp: i32,
@@ -326,7 +333,7 @@ struct Fighter {
   on_death: DeathCallback,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum DeathCallback {
   Player,
   Monster,
@@ -359,7 +366,7 @@ fn monster_death(monster: &mut Object, game: &mut Game) {
   monster.name = format!("remains of {}", monster.name);
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum Ai{
   Basic,
   Confused{previous_ai: Box<Ai>, num_turns: i32},
@@ -462,7 +469,7 @@ impl Rect {
 }
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct Tile {
   blocked: bool,
   block_sight: bool,
@@ -480,7 +487,7 @@ impl Tile {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Object {
   x: i32,
   y: i32,
@@ -898,6 +905,29 @@ fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut 
 }
 
 
+fn save_game(objects: &Vec<Object>, game: &Game) -> Result<(), Box<Error>> {
+  let save_data = serde_json::to_string(&(objects, game))?;
+  let mut file = File::create("savegame")?;
+  file.write_all(save_data.as_bytes())?;
+  Ok(())
+}
+
+
+fn load_game() -> Result<(Vec<Object>, Game), Box<Error>> {
+  let mut json_save_state = String::new();
+  let mut file = File::open("savegame")?;
+  file.read_to_string(&mut json_save_state)?;
+  let result = serde_json::from_str::<(Vec<Object>, Game)>(&json_save_state)?;
+  Ok(result)
+}
+
+
+fn msgbox(text: &str, width: i32, root: &mut Root) {
+  let options: &[&str] = &[];
+  menu(text, options, width, root);
+}
+
+
 fn main_menu(tcod: &mut Tcod) {
   let img = tcod::image::Image::from_file("menu_background.png")
     .ok().expect("Background image not found");
@@ -907,7 +937,7 @@ fn main_menu(tcod: &mut Tcod) {
 
     tcod.root.set_default_foreground(colors::LIGHT_YELLOW);
     tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 4, BackgroundFlag::None, TextAlignment::Center, "The Glass Oak");
-    tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 4, BackgroundFlag::None, TextAlignment::Center, "~ a tutorial ~");
+    tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 2, BackgroundFlag::None, TextAlignment::Center, "~ a tutorial ~");
 
 
     let choices = &["Play a new game", "Continue last game", "Quit"];
@@ -918,13 +948,24 @@ fn main_menu(tcod: &mut Tcod) {
         let (mut objects, mut game) = new_game(tcod);
         play_game(&mut objects, &mut game, tcod);
       },
+      Some(1) => {
+        match load_game() {
+          Ok((mut objects, mut game)) => {
+            initialise_fov(&game.map, tcod);
+            play_game(&mut objects, &mut game, tcod);
+          }
+          Err(_e) => {
+            msgbox("\nNo saved game to load.\n", 24, &mut tcod.root);
+            continue;
+          }
+        }
+      },
       Some(2) => {
         break;
       },
       _ => {}
     }
   }
-
 }
 
 
@@ -991,6 +1032,7 @@ fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
     previous_player_position = objects[PLAYER].pos();
     let player_action = handle_keys(key, tcod, objects, game);
     if player_action == PlayerAction::Exit {
+      save_game(objects, game).unwrap();
       break
     }
 
