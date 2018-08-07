@@ -40,10 +40,14 @@ const MAX_ROOM_MONSTERS: i32 = 3;
 const MAX_ROOM_ITEMS: i32 = 2;
 const PLAYER: usize = 0;
 const HEAL_AMOUNT: i32 = 4;
+const LEVEL_UP_BASE: i32 = 200;
+const LEVEL_UP_FACTOR: i32 = 150;
 const MSG_X: i32 = BAR_WIDTH + 2;
 const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 const INVENTORY_WIDTH: i32 = 50;
+const LEVEL_SCREEN_WIDTH: i32 = 40;
+const CHARACTER_SCREEN_WIDTH: i32 = 30;
 
 const BAR_WIDTH: i32 = 20;
 const PANEL_HEIGHT: i32 = 7;
@@ -149,12 +153,18 @@ fn cast_fireball(_inventory_id: usize, objects: &mut Vec<Object>, game: &mut Gam
   };
   game.log.add(format!("The fireball explodes, burning everything within {} tiles!", FIREBALL_RADIUS), colors::ORANGE);
 
-  for obj in objects {
+  let mut xp_to_gain = 0;
+  for (id, obj) in objects.iter_mut().enumerate() {
     if obj.distance(x, y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
       game.log.add(format!("The {} gets burned for {} hit points", obj.name, FIREBALL_DAMAGE), colors::ORANGE);
-      obj.take_damage(FIREBALL_DAMAGE, game);
+      if let Some(xp) = obj.take_damage(FIREBALL_DAMAGE, game) {
+        if id != PLAYER {
+          xp_to_gain += xp;
+        }
+      }
     }
   }
+  objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
 
   UseResult::UsedUp
 }
@@ -164,7 +174,9 @@ fn cast_lightning(_inventory_id: usize, objects: &mut Vec<Object>, game: &mut Ga
   let monster_id = closest_monster(LIGHTNING_RANGE, objects, tcod);
   if let Some(monster_id) = monster_id {
     game.log.add(format!("A lightning bolt strikes the {} with a loud thunder! The damage is {} hit points.", objects[monster_id].name, LIGHTNING_DAMAGE), colors::LIGHT_BLUE);
-    objects[monster_id].take_damage(LIGHTNING_DAMAGE, game);
+    if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, game) {
+      objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+    }
     UseResult::UsedUp
   } else { // no enemy found
     game.log.add("No enemy is close enough to strike.", colors::RED);
@@ -331,6 +343,7 @@ struct Fighter {
   hp: i32,
   defense: i32,
   power: i32,
+  xp: i32,
   on_death: DeathCallback,
 }
 
@@ -359,7 +372,7 @@ fn player_death(player: &mut Object, game: &mut Game) {
 }
 
 fn monster_death(monster: &mut Object, game: &mut Game) {
-  game.log.add(format!("{} is dead!", monster.name), colors::DARK_RED);
+  game.log.add(format!("{} is dead! You gain {} xp.", monster.name, monster.fighter.unwrap().xp), colors::DARK_RED);
   monster.char = '@';
   monster.color = colors::DARK_RED;
   monster.blocks = false;
@@ -507,6 +520,7 @@ struct Object {
   blocks: bool,
   alive: bool,
   always_visible: bool,
+  level: i32,
   fighter: Option<Fighter>,
   ai: Option<Ai>,
   item: Option<Item>,
@@ -523,6 +537,7 @@ impl Object {
       blocks: blocks,
       alive: false,
       always_visible: false,
+      level: 1,
       fighter: None,
       ai: None,
       item: None,
@@ -557,7 +572,7 @@ impl Object {
     (((x - self.x).pow(2) + (y - self.y).pow(2)) as f32).sqrt()
   }
 
-  pub fn take_damage(&mut self, damage: i32, game: &mut Game) {
+  pub fn take_damage(&mut self, damage: i32, game: &mut Game) -> Option<i32> {
     if let Some(fighter) = self.fighter.as_mut() {
       if damage > 0 {
         fighter.hp -= damage;
@@ -567,8 +582,10 @@ impl Object {
       if fighter.hp <= 0 {
         self.alive = false;
         fighter.on_death.callback(self, game);
+        return Some(fighter.xp);
       }
     }
+    None
   }
 
   pub fn heal(&mut self, amount: i32) {
@@ -584,7 +601,9 @@ impl Object {
     let damage = self.fighter.map_or(0, |f| f.power) - target.fighter.map_or(0, |f| f.defense);
     if damage > 0 {
       game.log.add(format!("{} attacks {} for {} hit points.", self.name, target.name, damage), colors::YELLOW);
-      target.take_damage(damage, game);
+      if let Some(xp) = target.take_damage(damage, game) {
+        self.fighter.as_mut().unwrap().xp += xp;
+      }
     } else {
       game.log.add(format!("{} attacks {} but it has no effect!", self.name, target.name),
       colors::YELLOW);
@@ -630,6 +649,42 @@ fn player_move_or_attack(dx: i32, dy: i32, objects: &mut Vec<Object>, game: &mut
 }
 
 
+fn level_up(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
+  let player = &mut objects[PLAYER];
+  let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+
+  if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
+    player.level += 1;
+    game.log.add(format!("Your battle skills grow stronger! You reached level {}!", player.level), colors::YELLOW);
+
+    let fighter = player.fighter.as_mut().unwrap();
+    let mut choice = None;
+    while choice.is_none() {
+      choice = menu(
+       "Level up! Choose a stat to raise:\n",
+        &[format!("Constitution: (+20 HP, from {}", fighter.max_hp),
+          format!("Strength (+1 attack, from {}", fighter.power),
+          format!("Agility (+1 defense, from {}", fighter.defense)],
+          LEVEL_SCREEN_WIDTH, &mut tcod.root);
+    };
+    fighter.xp -= level_up_xp;
+    match choice.unwrap() {
+      0 => {
+        fighter.max_hp += 20;
+        fighter.hp += 20;
+      }
+      1 => {
+        fighter.power += 1;
+      }
+      2 => {
+        fighter.defense += 1;
+      }
+      _ => unreachable!(),
+    }
+  }
+}
+
+
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
   let num_creatures = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
 
@@ -647,6 +702,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
           hp: 10,
           defense: 0,
           power: 3,
+          xp: 35,
           on_death: DeathCallback::Monster,
         });
         orc.ai = Some(Ai::Basic);
@@ -658,6 +714,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
           hp: 16,
           defense: 1,
           power: 4,
+          xp: 100,
           on_death: DeathCallback::Monster,
         });
         troll.ai = Some(Ai::Basic);
@@ -669,6 +726,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
           hp: 10,
           defense: 0,
           power: 3,
+          xp: 10,
           on_death: DeathCallback::Monster,
         });
         npc.ai = Some(Ai::Basic);
@@ -911,6 +969,24 @@ fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut 
       }
       DidntTakeTurn
     },
+    (Key { printable: 'c', .. }, true) => {
+      let player = &objects[PLAYER];
+      let level = player.level;
+      let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+      if let Some(fighter) = player.fighter.as_ref() {
+        let msg = format!("Character information
+
+Level: {}
+Experience: {}
+Experience to level up: {}
+
+Maximum HP: {}
+Attack: {}
+Defense: {}", level, fighter.xp, level_up_xp, fighter.max_hp, fighter.power, fighter.defense);
+        msgbox(&msg, CHARACTER_SCREEN_WIDTH, &mut tcod.root);
+      }
+      DidntTakeTurn
+    },
     (Key { printable: '<', .. }, true) => {
       let player_on_stairs = objects.iter().any({|object|
         object.pos() == objects[PLAYER].pos() && object.name == "stairs"
@@ -1003,6 +1079,7 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
     hp: 30,
     defense: 2,
     power: 5,
+    xp: 0,
     on_death: DeathCallback::Player,
   });
   let mut objects = vec![player];
@@ -1064,6 +1141,7 @@ fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
     render_all(tcod, &objects, game, fov_recompute);
 
     tcod.root.flush();
+    level_up(objects, game, tcod);
 
     for object in objects.iter_mut() {
       object.clear(&mut tcod.con);
