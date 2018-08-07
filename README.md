@@ -30,3 +30,5 @@ I tried to find a better font, but it seems like libtcod has some pretty exact (
 
 Next up: [Part 2 of the tutorial](https://tomassedovic.github.io/roguelike-tutorial/part-2-object-map.html).
 
+#### Some weeks later: August 7th, 2018
+I've feasted and famined on this project and totally failed to update the development log as I went. I just completed Part 11, "Dungeon levels and character progression", and the character can now progress through dungeons and level up, in addition to all the menu systems, items, controls, saving & loading, fighting monsters, and all the other things that previous lessons have covered. There are only 2 lessons left -- improving the monster progression and some basic equipment functionality. Hope to get to them soon!
