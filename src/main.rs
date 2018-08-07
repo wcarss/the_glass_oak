@@ -384,6 +384,9 @@ type Map = Vec<Vec<Tile>>;
 fn make_map(objects: &mut Vec<Object>) -> Map {
   // fills map with unblocked tiles... odd macro syntax!
   let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+  assert_eq!(&objects[PLAYER] as *const _, &objects[0] as *const _);
+  objects.truncate(1);
+
   let mut rooms = vec![];
 
   for _ in 0..MAX_ROOMS {
@@ -418,6 +421,10 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
       rooms.push(new_room);
     }
   }
+
+  let (last_room_x, last_room_y) = rooms[rooms.len() - 1].center();
+  let stairs = Object::new(last_room_x, last_room_y, '<', "stairs", colors::WHITE, false);
+  objects.push(stairs);
 
   map
 }
@@ -894,6 +901,15 @@ fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut 
       }
       DidntTakeTurn
     },
+    (Key { printable: '<', .. }, true) => {
+      let player_on_stairs = objects.iter().any({|object|
+        object.pos() == objects[PLAYER].pos() && object.name == "stairs"
+      });
+      if player_on_stairs {
+        next_level(tcod, objects, game);
+      }
+      DidntTakeTurn
+    },
     (Key { code: Escape, .. }, _) => Exit,
     (Key { code: Enter, alt: true, .. }, _) => {
       let fullscreen = tcod.root.is_fullscreen();
@@ -1006,6 +1022,18 @@ fn initialise_fov(map: &Map, tcod: &mut Tcod) {
     }
   }
   tcod.con.clear();
+}
+
+
+fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
+  game.log.add("You take a moment to rest, and recover your strength", colors::VIOLET);
+  let heal_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp / 2);
+  objects[PLAYER].heal(heal_hp);
+
+  game.log.add("After a rare moment of peace, you descend deeper into \
+    the heart of the dungeon...", colors::RED);
+  game.map = make_map(objects);
+  initialise_fov(&game.map, tcod);
 }
 
 
