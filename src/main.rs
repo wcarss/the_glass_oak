@@ -362,11 +362,10 @@ enum PlayerAction {
 
 type Map = Vec<Vec<Tile>>;
 
-fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
+fn make_map(objects: &mut Vec<Object>) -> Map {
   // fills map with unblocked tiles... odd macro syntax!
   let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
   let mut rooms = vec![];
-  let mut starting_position = (0, 0);
 
   for _ in 0..MAX_ROOMS {
     let w = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
@@ -385,7 +384,7 @@ fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
       let (new_x, new_y) = new_room.center();
 
       if rooms.is_empty() {
-        starting_position = (new_x, new_y);
+        objects[PLAYER].set_pos(new_x, new_y);
       } else {
         let (prev_x, prev_y) = rooms[rooms.len() - 1].center();
 
@@ -401,7 +400,7 @@ fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
     }
   }
 
-  (map, starting_position)
+  map
 }
 
 fn create_room(room: Rect, map: &mut Map) {
@@ -910,7 +909,7 @@ fn main() {
   let mut objects = vec![player];
   let mut inventory = vec![];
 
-  let (mut map, (player_x, player_y)) = make_map(&mut objects);
+  let mut map = make_map(&mut objects);
   let mut key = Default::default();
 
   for y in 0..MAP_HEIGHT {
@@ -924,7 +923,6 @@ fn main() {
     }
   }
 
-  objects[PLAYER].set_pos(player_x, player_y);
   objects[PLAYER].alive = true;
   objects[PLAYER].fighter = Some( Fighter {
     max_hp: 30,
