@@ -64,6 +64,7 @@ struct Game {
   map: Map,
   log: Messages,
   inventory: Vec<Object>,
+  dungeon_level: u32,
 }
 
 struct Tcod {
@@ -346,6 +347,7 @@ impl DeathCallback {
       Player => player_death,
       Monster => monster_death,
     };
+    object.always_visible = true;
     callback(object, game);
   }
 }
@@ -423,7 +425,8 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
   }
 
   let (last_room_x, last_room_y) = rooms[rooms.len() - 1].center();
-  let stairs = Object::new(last_room_x, last_room_y, '<', "stairs", colors::WHITE, false);
+  let mut stairs = Object::new(last_room_x, last_room_y, '<', "stairs", colors::WHITE, false);
+  stairs.always_visible = true;
   objects.push(stairs);
 
   map
@@ -503,6 +506,7 @@ struct Object {
   name: String,
   blocks: bool,
   alive: bool,
+  always_visible: bool,
   fighter: Option<Fighter>,
   ai: Option<Ai>,
   item: Option<Item>,
@@ -518,6 +522,7 @@ impl Object {
       name: name.into(),
       blocks: blocks,
       alive: false,
+      always_visible: false,
       fighter: None,
       ai: None,
       item: None,
@@ -683,7 +688,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
 
     if !is_blocked(x, y, map, objects) {
       let dice = rand::random::<f32>();
-      let item = if dice < 0.7 {
+      let mut item = if dice < 0.7 {
         let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
         object.item = Some(Item::Heal);
         object
@@ -700,6 +705,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
         object.item = Some(Item::Confuse);
         object
       };
+      item.always_visible = true;
       objects.push(item);
     }
   }
@@ -813,7 +819,9 @@ fn render_all(tcod: &mut Tcod, objects: &Vec<Object>, game: &mut Game, fov_recom
     }
   }
 
-  let mut to_draw: Vec<_> = objects.iter().filter(|o| fov_map.is_in_fov(o.x, o.y)).collect();
+  let mut to_draw: Vec<_> = objects.iter().filter(|o| {
+    fov_map.is_in_fov(o.x, o.y) || (o.always_visible && game.map[o.x as usize][o.y as usize].explored)
+  }).collect();
   to_draw.sort_by(|o1, o2| { o1.blocks.cmp(&o2.blocks) });
   for object in &to_draw {
     object.draw(con);
@@ -828,6 +836,8 @@ fn render_all(tcod: &mut Tcod, objects: &Vec<Object>, game: &mut Game, fov_recom
   let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
 
   render_bar(panel, 1, 1, BAR_WIDTH, "HP", hp, max_hp, colors::LIGHT_RED, colors::DARKER_RED);
+
+  panel.print_ex(1, 3, BackgroundFlag::None, TextAlignment::Left, format!("Dungeon level: {}", game.dungeon_level));
 
   panel.set_default_foreground(colors::LIGHT_GREY);
   panel.print_ex(1, 0, BackgroundFlag::None, TextAlignment::Left, get_names_under_mouse(mouse, &objects, fov_map));
@@ -953,7 +963,7 @@ fn main_menu(tcod: &mut Tcod) {
 
     tcod.root.set_default_foreground(colors::LIGHT_YELLOW);
     tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 4, BackgroundFlag::None, TextAlignment::Center, "The Glass Oak");
-    tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 2, BackgroundFlag::None, TextAlignment::Center, "~ a tutorial ~");
+    tcod.root.print_ex(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 3, BackgroundFlag::None, TextAlignment::Center, "~ a  tutorial ~");
 
 
     let choices = &["Play a new game", "Continue last game", "Quit"];
@@ -1000,6 +1010,7 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
     map: make_map(&mut objects),
     log: vec![],
     inventory: vec![],
+    dungeon_level: 1,
   };
 
   initialise_fov(&game.map, tcod);
@@ -1032,6 +1043,7 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
 
   game.log.add("After a rare moment of peace, you descend deeper into \
     the heart of the dungeon...", colors::RED);
+  game.dungeon_level += 1;
   game.map = make_map(objects);
   initialise_fov(&game.map, tcod);
 }
