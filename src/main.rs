@@ -755,24 +755,36 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
 
     if !is_blocked(x, y, map, objects) {
-      let dice = rand::random::<f32>();
-      let mut item = if dice < 0.7 {
-        let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
-        object.item = Some(Item::Heal);
-        object
-      } else if dice < 0.7 + 0.1 {
-        let mut object = Object::new(x, y, '#', "scroll of lightning bolt", colors::LIGHT_YELLOW, false);
-        object.item = Some(Item::Lightning);
-        object
-      } else if dice < 0.7 + 0.1 + 0.1 {
-        let mut object = Object::new(x, y, '#', "scroll of fireball", colors::LIGHT_YELLOW, false);
-        object.item = Some(Item::Fireball);
-        object
-      } else {
-        let mut object = Object::new(x, y, '#', "scroll of confusion", colors::LIGHT_YELLOW, false);
-        object.item = Some(Item::Confuse);
-        object
+      let item_chances = &mut [
+        Weighted {weight: 70, item: Item::Heal},
+        Weighted {weight: 10, item: Item::Lightning},
+        Weighted {weight: 10, item: Item::Fireball},
+        Weighted {weight: 10, item: Item::Confuse},
+      ];
+      let item_choice = WeightedChoice::new(item_chances);
+      let mut item = match item_choice.ind_sample(&mut rand::thread_rng()) {
+        Item::Heal => {
+          let mut object = Object::new(x, y, '!', "healing potion", colors::VIOLET, false);
+          object.item = Some(Item::Heal);
+          object
+        }
+        Item::Lightning => {
+          let mut object = Object::new(x, y, '#', "scroll of lightning bolt", colors::LIGHT_YELLOW, false);
+          object.item = Some(Item::Lightning);
+          object
+        }
+        Item::Fireball => {
+          let mut object = Object::new(x, y, '#', "scroll of fireball", colors::LIGHT_YELLOW, false);
+          object.item = Some(Item::Fireball);
+          object
+        }
+        Item::Confuse => {
+          let mut object = Object::new(x, y, '#', "scroll of confusion", colors::LIGHT_YELLOW, false);
+          object.item = Some(Item::Confuse);
+          object
+        }
       };
+
       item.always_visible = true;
       objects.push(item);
     }
