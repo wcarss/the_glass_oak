@@ -32,15 +32,13 @@ const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 12;
 const LIGHTNING_RANGE: i32 = 5;
-const LIGHTNING_DAMAGE: i32 = 20;
+const LIGHTNING_DAMAGE: i32 = 40;
 const FIREBALL_RADIUS: i32 = 3;
-const FIREBALL_DAMAGE: i32 = 12;
+const FIREBALL_DAMAGE: i32 = 25;
 const CONFUSE_NUM_TURNS: i32 = 10;
 const CONFUSE_RANGE: i32 = 8;
-const MAX_ROOM_MONSTERS: i32 = 3;
-const MAX_ROOM_ITEMS: i32 = 2;
 const PLAYER: usize = 0;
-const HEAL_AMOUNT: i32 = 4;
+const HEAL_AMOUNT: i32 = 40;
 const LEVEL_UP_BASE: i32 = 200;
 const LEVEL_UP_FACTOR: i32 = 150;
 const MSG_X: i32 = BAR_WIDTH + 2;
@@ -83,6 +81,19 @@ struct Tcod {
 enum UseResult {
   UsedUp,
   Cancelled,
+}
+
+struct Transition {
+  level: u32,
+  value: u32,
+}
+
+
+fn from_dungeon_level(table: &[Transition], level: u32) -> u32 {
+  table.iter()
+    .rev()
+    .find(|transition| level >= transition.level)
+    .map_or(0, |transition| transition.value)
 }
 
 
@@ -397,7 +408,7 @@ enum PlayerAction {
 
 type Map = Vec<Vec<Tile>>;
 
-fn make_map(objects: &mut Vec<Object>) -> Map {
+fn make_map(objects: &mut Vec<Object>, level: u32) -> Map {
   // fills map with unblocked tiles... odd macro syntax!
   let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
   assert_eq!(&objects[PLAYER] as *const _, &objects[0] as *const _);
@@ -417,7 +428,7 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
 
     if !failed {
       create_room(new_room, &mut map);
-      place_objects(new_room, &map, objects);
+      place_objects(new_room, &map, objects, level);
 
       let (new_x, new_y) = new_room.center();
 
@@ -686,8 +697,19 @@ fn level_up(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
 }
 
 
-fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
-  let num_creatures = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS+1);
+fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
+  let max_monsters = from_dungeon_level(&[
+    Transition {level: 1, value: 2},
+    Transition {level: 4, value: 3},
+    Transition {level: 6, value: 5},
+  ], level);
+  let num_creatures = rand::thread_rng().gen_range(0, max_monsters + 1);
+
+  let troll_chance = from_dungeon_level(&[
+    Transition {level: 3, value: 15},
+    Transition {level: 5, value: 30},
+    Transition {level: 7, value: 60},
+  ], level);
 
   for _ in 0..num_creatures {
     let x = rand::thread_rng().gen_range(room.x1+1, room.x2);
@@ -696,7 +718,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     if !is_blocked(x, y, map, objects) {
       let monster_chances = &mut [
         Weighted {weight: 80, item: "orc"},
-        Weighted {weight: 15, item: "troll"},
+        Weighted {weight: troll_chance, item: "troll"},
         Weighted {weight: 5, item: "npc"},
       ];
       let monster_choice = WeightedChoice::new(monster_chances);
@@ -704,10 +726,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
         "orc" => {
           let mut orc = Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true);
           orc.fighter = Some( Fighter {
-            max_hp: 10,
-            hp: 10,
+            max_hp: 20,
+            hp: 20,
             defense: 0,
-            power: 3,
+            power: 4,
             xp: 35,
             on_death: DeathCallback::Monster,
           });
@@ -717,10 +739,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
         "troll" => {
           let mut troll = Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true);
           troll.fighter = Some( Fighter {
-            max_hp: 16,
-            hp: 16,
-            defense: 1,
-            power: 4,
+            max_hp: 30,
+            hp: 30,
+            defense: 2,
+            power: 8,
             xp: 100,
             on_death: DeathCallback::Monster,
           });
@@ -748,7 +770,12 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     }
   }
 
-  let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+  let max_items = from_dungeon_level(&[
+    Transition {level: 1, value: 1},
+    Transition {level: 4, value: 2},
+  ], level);
+
+  let num_items = rand::thread_rng().gen_range(0, max_items + 1);
 
   for _ in 0..num_items {
     let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
@@ -756,10 +783,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
 
     if !is_blocked(x, y, map, objects) {
       let item_chances = &mut [
-        Weighted {weight: 70, item: Item::Heal},
-        Weighted {weight: 10, item: Item::Lightning},
-        Weighted {weight: 10, item: Item::Fireball},
-        Weighted {weight: 10, item: Item::Confuse},
+        Weighted {weight: 35, item: Item::Heal},
+        Weighted {weight: from_dungeon_level(&[Transition{level: 4,value: 25}], level), item: Item::Lightning},
+        Weighted {weight: from_dungeon_level(&[Transition{level: 6,value: 25}], level), item: Item::Fireball},
+        Weighted {weight: from_dungeon_level(&[Transition{level: 2,value: 10}], level), item: Item::Confuse},
       ];
       let item_choice = WeightedChoice::new(item_chances);
       let mut item = match item_choice.ind_sample(&mut rand::thread_rng()) {
@@ -1116,16 +1143,16 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
   let mut player = Object::new(0, 0, '%', "player", colors::WHITE, true);
   player.alive = true;
   player.fighter = Some( Fighter {
-    max_hp: 30,
-    hp: 30,
-    defense: 2,
-    power: 5,
+    max_hp: 100,
+    hp: 100,
+    defense: 1,
+    power: 4,
     xp: 0,
     on_death: DeathCallback::Player,
   });
   let mut objects = vec![player];
   let mut game = Game {
-    map: make_map(&mut objects),
+    map: make_map(&mut objects, 1),
     log: vec![],
     inventory: vec![],
     dungeon_level: 1,
@@ -1162,7 +1189,7 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
   game.log.add("After a rare moment of peace, you descend deeper into \
     the heart of the dungeon...", colors::RED);
   game.dungeon_level += 1;
-  game.map = make_map(objects);
+  game.map = make_map(objects, game.dungeon_level);
   initialise_fov(&game.map, tcod);
 }
 
