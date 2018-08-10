@@ -14,6 +14,7 @@ use std::cmp;
 use std::io::{Read, Write};
 use std::fs::File;
 use std::error::Error;
+use rand::distributions::{Weighted, WeightedChoice, IndependentSample};
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
@@ -693,44 +694,53 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     let y = rand::thread_rng().gen_range(room.y1+1, room.y2);
 
     if !is_blocked(x, y, map, objects) {
-
-      let rand_control = rand::random::<f32>();
-      let mut creature = if rand_control < 0.8 {
-        let mut orc = Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true);
-        orc.fighter = Some( Fighter {
-          max_hp: 10,
-          hp: 10,
-          defense: 0,
-          power: 3,
-          xp: 35,
-          on_death: DeathCallback::Monster,
-        });
-        orc.ai = Some(Ai::Basic);
-        orc
-      } else if rand_control < 0.96 {
-        let mut troll = Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true);
-        troll.fighter = Some( Fighter {
-          max_hp: 16,
-          hp: 16,
-          defense: 1,
-          power: 4,
-          xp: 100,
-          on_death: DeathCallback::Monster,
-        });
-        troll.ai = Some(Ai::Basic);
-        troll
-      } else {
-        let mut npc = Object::new(x, y, '&', &(String::from("npc-") + &(x+y).to_string()), colors::YELLOW, true);
-        npc.fighter = Some( Fighter {
-          max_hp: 10,
-          hp: 10,
-          defense: 0,
-          power: 3,
-          xp: 10,
-          on_death: DeathCallback::Monster,
-        });
-        npc.ai = Some(Ai::Basic);
-        npc
+      let monster_chances = &mut [
+        Weighted {weight: 80, item: "orc"},
+        Weighted {weight: 15, item: "troll"},
+        Weighted {weight: 5, item: "npc"},
+      ];
+      let monster_choice = WeightedChoice::new(monster_chances);
+      let mut creature = match monster_choice.ind_sample(&mut rand::thread_rng()) {
+        "orc" => {
+          let mut orc = Object::new(x, y, 'o', &(String::from("orc-") + &(x+y).to_string()), colors::DESATURATED_GREEN, true);
+          orc.fighter = Some( Fighter {
+            max_hp: 10,
+            hp: 10,
+            defense: 0,
+            power: 3,
+            xp: 35,
+            on_death: DeathCallback::Monster,
+          });
+          orc.ai = Some(Ai::Basic);
+          orc
+        }
+        "troll" => {
+          let mut troll = Object::new(x, y, 'T', &(String::from("troll-") + &(x+y).to_string()), colors::DARKER_GREEN, true);
+          troll.fighter = Some( Fighter {
+            max_hp: 16,
+            hp: 16,
+            defense: 1,
+            power: 4,
+            xp: 100,
+            on_death: DeathCallback::Monster,
+          });
+          troll.ai = Some(Ai::Basic);
+          troll
+        }
+        "npc" => {
+          let mut npc = Object::new(x, y, '&', &(String::from("npc-") + &(x+y).to_string()), colors::YELLOW, true);
+          npc.fighter = Some( Fighter {
+            max_hp: 10,
+            hp: 10,
+            defense: 0,
+            power: 3,
+            xp: 10,
+            on_death: DeathCallback::Monster,
+          });
+          npc.ai = Some(Ai::Basic);
+          npc
+        }
+        _ => unreachable!(),
       };
 
       creature.alive = true;
@@ -929,7 +939,6 @@ fn handle_keys(key: Key, tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut 
   let player_alive = objects[PLAYER].alive;
 
   match (key, player_alive) {
-// movement keys
     (Key { code: Up, .. }, true) | (Key { code: NumPad8, ..}, true) => {
       player_move_or_attack(0, -1, objects, game);
       TookTurn
